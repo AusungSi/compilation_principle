@@ -1,0 +1,101 @@
+# pl0_core/symbol_table.py
+
+class SymbolType:
+    CONST = "CONST"
+    VAR = "VAR"
+    PROC = "PROC"
+
+class Symbol:
+    def __init__(self, name, type, level, addr=0, value=0):
+        self.name = name
+        self.type = type
+        self.level = level
+        
+        # 对于 VAR: addr 是栈帧中的相对地址 (Offset)
+        # 对于 PROC: addr 是过程入口指令的索引 (Instruction Address)
+        self.addr = addr
+        
+        # 对于 CONST: value 是常量值
+        self.value = value
+
+    def __repr__(self):
+        info = f"{self.level}:{self.addr}"
+        if self.type == SymbolType.CONST:
+            info += f"={self.value}"
+        return f"<{self.type} {self.name} @ {info}>"
+
+class SymbolTable:
+    def __init__(self):
+        # 作用域栈：每个元素是一个列表，存储该层定义的所有符号
+        self.scopes = [] 
+        
+        # 地址计数器栈：记录每一层当前分配到了哪个地址
+        # PL/0 默认前3个单元(0,1,2)用于系统链路(SL, DL, RA)，所以变量从3开始
+        self.addr_counters = []
+        
+        # 当前层级 (-1 表示尚未开始，主程序是 0)
+        self.current_level = -1
+
+    def enter_scope(self):
+        """进入新的作用域 (层级+1)"""
+        self.scopes.append([])       # 新的符号列表
+        self.addr_counters.append(3) # 新的地址计数器，从3开始
+        self.current_level += 1
+
+    def exit_scope(self):
+        """退出当前作用域 (层级-1)"""
+        self.scopes.pop()
+        self.addr_counters.pop()
+        self.current_level -= 1
+
+    def define_const(self, name, value):
+        """定义常量"""
+        sym = Symbol(name, SymbolType.CONST, self.current_level, value=value)
+        self._add_symbol(sym)
+
+    def define_var(self, name):
+        """定义变量，自动分配地址"""
+        # 获取当前层的可用地址
+        addr = self.addr_counters[-1]
+        
+        sym = Symbol(name, SymbolType.VAR, self.current_level, addr=addr)
+        self._add_symbol(sym)
+        
+        # 更新计数器，下一个变量地址+1
+        self.addr_counters[-1] += 1
+
+    def define_proc(self, name):
+        """
+        定义过程
+        注意：过程名是定义在'当前层'，但过程内部的代码是在'下一层'
+        """
+        sym = Symbol(name, SymbolType.PROC, self.current_level)
+        self._add_symbol(sym)
+        return sym # 返回符号对象以便后续回填地址
+
+    def _add_symbol(self, symbol):
+        """内部方法：添加符号并查重"""
+        current_scope = self.scopes[-1]
+        for s in current_scope:
+            if s.name == symbol.name:
+                raise Exception(f"语义错误: 标识符 '{symbol.name}' 在当前层重复定义")
+        current_scope.append(symbol)
+
+    def lookup(self, name):
+        """
+        查找符号
+        返回: (Symbol对象, 层差L)
+        """
+        # 从最内层(栈顶)向外层(栈底)查找
+        for i in range(len(self.scopes) - 1, -1, -1):
+            scope = self.scopes[i]
+            for sym in scope:
+                if sym.name == name:
+                    # 层差 = 当前引用层 - 定义层
+                    return sym, self.current_level - sym.level
+        
+        return None, None
+
+    def get_current_frame_size(self):
+        """获取当前栈帧的大小 (用于 INT 指令)"""
+        return self.addr_counters[-1]

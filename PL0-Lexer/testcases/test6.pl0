@@ -1,0 +1,16 @@
+program testErrors;
+const z = 0;
+var counter, unusedVar;
+
+procedure p(a, b);
+begin
+  counter := a + b
+end
+
+begin
+  countr := 10;    
+  call p(1);   
+  counter := 10 / z; 
+  counter := 10 / 0;
+  read(z)
+end

@@ -10,6 +10,7 @@ from src.parser import Parser
 from src.generator import CodeGenerator
 from src.interpreter import Interpreter
 from src.ast_printer import ASTPrinter
+from src.semantic_analyzer import SemanticAnalyzer
 
 def print_header(title):
     print(f"\n\033[1;36m{'='*20} {title} {'='*20}\033[0m")
@@ -53,6 +54,16 @@ def compile_and_run(source_code, args):
             print_header("抽象语法树 (AST)")
             printer = ASTPrinter()
             printer.print(ast)
+
+        analyzer = SemanticAnalyzer()
+        errors = analyzer.analyze(ast)
+
+        if len(errors) > 0:
+            print("====== 编译失败：发现语义错误 ======")
+            for err in errors:
+                print(f"\033[91m{err}\033[0m") # 红色输出错误
+            # 遇到语义错误，不再进行代码生成
+            exit(1)
 
         # --- 3. 代码生成 ---
         if args.verbose: print("[3/4] 正在生成 P-Code...")

@@ -223,16 +223,17 @@ class CodeGenerator:
         2. STO L A  -> 将栈顶数据存入变量
         """
         for var in node.vars:
-            # 1. 生成 RED 指令 (只读入到栈顶)
-            # PPT 中 RED 的 L 和 A 都是 0
-            self.emit(OpCode.RED, 0, 0)
-
-            # 2. 查找变量地址
             sym, level_diff = self.symbol_table.lookup(var.name)
-            if not sym: raise Exception(f"未定义的变量: {var.name}")
+            
+            # (这里因为有了 SemanticAnalyzer，其实可以省去部分检查，但保留也无妨)
+            if not sym: 
+                raise Exception(f"未定义的变量: {var.name}")
+            if sym.type != SymbolType.VAR:
+                raise Exception(f"Read 只能读取变量: {var.name}")
 
-            # 3. 生成 STO 指令 (将栈顶读到的数存入变量)
-            self.emit(OpCode.STO, level_diff, sym.addr)
+            # 2. 直接生成 RED 指令，参数就是层差和地址
+            # 这样生成的就是 RED 0, 3，而不是 RED 0, 0
+            self.emit(OpCode.RED, level_diff, sym.addr)
 
     def visit_Write(self, node):
         for expr in node.exprs:

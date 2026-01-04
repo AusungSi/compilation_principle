@@ -6,7 +6,7 @@ class SymbolType:
     PROC = "PROC"
 
 class Symbol:
-    def __init__(self, name, type, level, addr=0, value=0):
+    def __init__(self, name, type, level, addr=0, value=0, param_count=0):
         self.name = name
         self.type = type
         self.level = level
@@ -17,11 +17,15 @@ class Symbol:
         
         # 对于 CONST: value 是常量值
         self.value = value
+        self.param_count = param_count
+        self.referenced = False
 
     def __repr__(self):
         info = f"{self.level}:{self.addr}"
         if self.type == SymbolType.CONST:
             info += f"={self.value}"
+        if self.type == SymbolType.PROC:
+            info += f"(params={self.param_count})"
         return f"<{self.type} {self.name} @ {info}>"
 
 class SymbolTable:
@@ -64,12 +68,12 @@ class SymbolTable:
         # 更新计数器，下一个变量地址+1
         self.addr_counters[-1] += 1
 
-    def define_proc(self, name):
+    def define_proc(self, name, param_count=0):
         """
         定义过程
         注意：过程名是定义在'当前层'，但过程内部的代码是在'下一层'
         """
-        sym = Symbol(name, SymbolType.PROC, self.current_level)
+        sym = Symbol(name, SymbolType.PROC, self.current_level, param_count=param_count)
         self._add_symbol(sym)
         return sym # 返回符号对象以便后续回填地址
 
@@ -81,7 +85,7 @@ class SymbolTable:
                 raise Exception(f"语义错误: 标识符 '{symbol.name}' 在当前层重复定义")
         current_scope.append(symbol)
 
-    def lookup(self, name):
+    def lookup(self, name, mark_as_used=True):
         """
         查找符号
         返回: (Symbol对象, 层差L)
@@ -91,6 +95,8 @@ class SymbolTable:
             scope = self.scopes[i]
             for sym in scope:
                 if sym.name == name:
+                    if mark_as_used:
+                        sym.referenced = True
                     # 层差 = 当前引用层 - 定义层
                     return sym, self.current_level - sym.level
         
@@ -99,3 +105,35 @@ class SymbolTable:
     def get_current_frame_size(self):
         """获取当前栈帧的大小 (用于 INT 指令)"""
         return self.addr_counters[-1]
+    
+    def get_all_symbols(self):
+        """获取当前所有作用域的符号（用于模糊匹配）"""
+        all_syms = []
+        for scope in self.scopes:
+            all_syms.extend(scope)
+        return all_syms
+
+    def get_unused_variables(self):
+        """获取当前作用域中未使用的变量（在 exit_scope 前调用）"""
+        unused = []
+        if self.scopes:
+            for sym in self.scopes[-1]: # 只检查当前层，因为外层可能还在后面被用到
+                if sym.type == SymbolType.VAR and not sym.referenced:
+                    unused.append(sym)
+        return unused
+    
+def levenshtein_distance(s1, s2):
+    if len(s1) < len(s2):
+        return levenshtein_distance(s2, s1)
+    if len(s2) == 0:
+        return len(s1)
+    previous_row = range(len(s2) + 1)
+    for i, c1 in enumerate(s1):
+        current_row = [i + 1]
+        for j, c2 in enumerate(s2):
+            insertions = previous_row[j + 1] + 1
+            deletions = current_row[j] + 1
+            substitutions = previous_row[j] + (c1 != c2)
+            current_row.append(min(insertions, deletions, substitutions))
+        previous_row = current_row
+    return previous_row[-1]

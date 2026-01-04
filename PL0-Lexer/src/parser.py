@@ -276,6 +276,7 @@ class Parser:
             node = While(condition, body)
             
         elif tt == TokenType.CALL:
+            call_token = self.current_token
             self.eat(TokenType.CALL)
             proc_name = self.current_token.value
             self.eat(TokenType.IDENTIFIER)
@@ -289,7 +290,7 @@ class Parser:
                     args.append(self.parse_exp())
             self.eat(TokenType.RPAREN)
             # [AST] 创建 Call 节点
-            node = Call(proc_name, args)
+            node = Call(proc_name, args, token=call_token)
                 
         elif tt == TokenType.READ:
             self.eat(TokenType.READ)

@@ -1,5 +1,13 @@
 class AST:
     """所有 AST 节点的基类"""
+
+    def __init__(self, token=None):
+            # [新增] 记录 token 以便报错时定位
+            self.token = token
+            # 如果传入了 token，提前解包行号列号，方便后续使用
+            self.lineno = token.line if token else 0
+            self.column = token.column if token else 0
+
     def __repr__(self):
         return f"<{self.__class__.__name__}>"
 
@@ -14,6 +22,7 @@ class BinOp(AST):
     例如：a + b, a > 10
     """
     def __init__(self, left, op, right):
+        super().__init__(op)
         self.left = left       # 左操作数 (AST节点)
         self.op = op           # 运算符 (Token)
         self.right = right     # 右操作数 (AST节点)
@@ -39,6 +48,7 @@ class Num(AST):
     对应文法：<integer>
     """
     def __init__(self, token):
+        super().__init__(token)
         self.token = token
         self.value = int(token.value) # 存储实际整数值
 
@@ -116,7 +126,8 @@ class Call(AST):
     过程调用
     对应文法：call <id>([<exp>{,<exp>}])
     """
-    def __init__(self, proc_name, args):
+    def __init__(self, proc_name, args, token=None):
+        super().__init__(token)
         self.proc_name = proc_name # 过程名 (字符串或Token)
         self.args = args           # 参数列表 (表达式节点列表)
 

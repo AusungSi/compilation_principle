@@ -6,7 +6,7 @@ class SymbolType:
     PROC = "PROC"
 
 class Symbol:
-    def __init__(self, name, type, level, addr=0, value=0, param_count=0):
+    def __init__(self, name, type, level, addr=0, value=0, param_count=0, is_initialized=False):
         self.name = name
         self.type = type
         self.level = level
@@ -18,6 +18,8 @@ class Symbol:
         # 对于 CONST: value 是常量值
         self.value = value
         self.param_count = param_count
+        self.referenced = False
+        self.is_initialized = is_initialized
         self.referenced = False
 
     def __repr__(self):
@@ -54,7 +56,7 @@ class SymbolTable:
 
     def define_const(self, name, value):
         """定义常量"""
-        sym = Symbol(name, SymbolType.CONST, self.current_level, value=value)
+        sym = Symbol(name, SymbolType.CONST, self.current_level, value=value, is_initialized=True)
         self._add_symbol(sym)
 
     def define_var(self, name):
@@ -62,7 +64,7 @@ class SymbolTable:
         # 获取当前层的可用地址
         addr = self.addr_counters[-1]
         
-        sym = Symbol(name, SymbolType.VAR, self.current_level, addr=addr)
+        sym = Symbol(name, SymbolType.VAR, self.current_level, addr=addr, is_initialized=False)
         self._add_symbol(sym)
         
         # 更新计数器，下一个变量地址+1
@@ -73,7 +75,7 @@ class SymbolTable:
         定义过程
         注意：过程名是定义在'当前层'，但过程内部的代码是在'下一层'
         """
-        sym = Symbol(name, SymbolType.PROC, self.current_level, param_count=param_count)
+        sym = Symbol(name, SymbolType.PROC, self.current_level, param_count=param_count, is_initialized=True)
         self._add_symbol(sym)
         return sym # 返回符号对象以便后续回填地址
 
@@ -88,19 +90,27 @@ class SymbolTable:
     def lookup(self, name, mark_as_used=True):
         """
         查找符号
-        返回: (Symbol对象, 层差L)
+        mark_as_used: 如果为 True，查找成功时将符号标记为已引用
         """
-        # 从最内层(栈顶)向外层(栈底)查找
         for i in range(len(self.scopes) - 1, -1, -1):
             scope = self.scopes[i]
             for sym in scope:
                 if sym.name == name:
+                    # [新增] 如果找到了，标记为已引用
                     if mark_as_used:
                         sym.referenced = True
-                    # 层差 = 当前引用层 - 定义层
                     return sym, self.current_level - sym.level
-        
         return None, None
+    
+    def get_unused_variables(self):
+        unused = []
+        if self.scopes:
+            # 只检查当前最内层的作用域 (self.scopes[-1])
+            # 因为外层变量可能在后续代码中才被用到
+            for sym in self.scopes[-1]:
+                if sym.type == SymbolType.VAR and not sym.referenced:
+                    unused.append(sym)
+        return unused
 
     def get_current_frame_size(self):
         """获取当前栈帧的大小 (用于 INT 指令)"""

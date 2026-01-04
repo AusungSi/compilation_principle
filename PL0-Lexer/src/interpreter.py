@@ -70,10 +70,26 @@ class Interpreter:
                     self.stack[self.t] = self.stack[base_addr + a]
 
                 elif f == OpCode.STO:
-                    # STO L, a: 将栈顶内容存入变量(相对地址a, 层差L)
-                    # 注意：标准 PL/0 STO 通常会退栈 (Pop)
-                    base_addr = self.base(l)
-                    self.stack[base_addr + a] = self.stack[self.t]
+                    if l == -1:
+                        # 解释：
+                        # 编译器的约定是：L=-1 代表要把值写入"即将被创建的下一个栈帧"中。
+                        # 此时 self.t 指向栈顶（实参的值）。
+                        # STO 执行完后会退栈 (self.t -= 1)。
+                        # 稍后执行 CAL 时，新栈帧的 Base 将是 (当前的 self.t) + 1。
+                        # 目标变量在新栈帧的偏移是 a。
+                        # 所以物理地址推导：
+                        # Target = New_Base + a 
+                        #        = (Current_T_After_Pop + 1) + a 
+                        #        = (self.t - 1 + 1) + a 
+                        #        = self.t + a
+                        self.stack[self.t + a] = self.stack[self.t]
+                    
+                    else:
+                        # 原有的正常赋值逻辑 (写入当前或外层栈帧)
+                        base_addr = self.base(l)
+                        self.stack[base_addr + a] = self.stack[self.t]
+                    
+                    # 无论哪种情况，STO 都要消耗栈顶元素
                     self.t -= 1
 
                 elif f == OpCode.CAL:

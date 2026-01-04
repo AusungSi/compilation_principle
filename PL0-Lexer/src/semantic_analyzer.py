@@ -3,6 +3,36 @@ from .symbol_table import SymbolTable, SymbolType, levenshtein_distance
 from .token import TokenType
 
 class SemanticAnalyzer:
+    """
+    语义分析器 (Semantic Analyzer)
+    
+    负责对抽象语法树 (AST) 进行静态语义检查，确保程序的语义正确性。
+    在此阶段不生成代码，而是收集错误 (Errors) 和警告 (Warnings)。
+
+    已实现的功能特性 (Features Implemented):
+    
+    1. 基础检查 (Basic Checks):
+       - [Error] 变量/常量/过程的重复定义检测 (Duplicate Definition)
+       - [Error] 未声明标识符的使用检测 (Undefined Identifier)
+       - [Error] 非法类型赋值 (如给 Const 或 Procedure 赋值)
+
+    2. 作用域与生命周期 (Scope & Lifetime):
+       - [Warning] 作用域遮蔽检测 (Shadowing): 内层变量遮挡外层同名变量
+       - [Warning] 未使用变量检测 (Unused Variable): 定义但从未被引用的局部/全局变量
+       - [Error] 未初始化变量检测 (Uninitialized Variable): 变量在使用前未进行赋值
+
+    3. 静态计算与控制流分析 (Static Evaluation & Control Flow):
+       - [Error] 常量折叠与增强除零检测 (Constant Folding): 
+         支持在编译期计算常量表达式 (如 10/(5-5)) 并拦截除零错误。
+       - [Warning] 不可达代码检测 (Unreachable Code):
+         检测恒为假的 IF/WHILE 条件 (如 if 0=1 then ...)。
+       - [Warning] 死循环检测 (Infinite Loop):
+         检测恒为真的 WHILE 条件 (如 while 1=1 do ...)。
+
+    4. 过程调用检查 (Procedure Checks):
+       - [Error] 参数个数匹配检查 (Parameter Count Mismatch)
+       - [Error] 调用类型检查 (防止 call 变量)
+    """
     def __init__(self):
         self.symbol_table = SymbolTable()
         self.errors = [] # [核心] 错误收集列表
@@ -64,6 +94,11 @@ class SemanticAnalyzer:
     def visit_Block(self, node):
         # 1. 定义常量
         for const in node.consts:
+
+            shadowed_sym, _ = self.symbol_table.lookup(const.name)
+            if shadowed_sym:
+                print(f"\033[93m[Warning] 常量 '{const.name}' 遮蔽了外层作用域的同名标识符\033[0m")
+
             try:
                 self.symbol_table.define_const(const.name, const.value)
             except Exception as e:
@@ -72,6 +107,11 @@ class SemanticAnalyzer:
 
         # 2. 定义变量
         for var in node.vars:
+
+            shadowed_sym, _ = self.symbol_table.lookup(var.name)
+            if shadowed_sym:
+                print(f"\033[93m[Warning] 变量 '{var.name}' 遮蔽了外层作用域的同名标识符\033[0m")
+
             try:
                 self.symbol_table.define_var(var.name)
             except Exception as e:
@@ -80,7 +120,8 @@ class SemanticAnalyzer:
         # 3. 定义过程 (先定义，后递归，支持递归调用)
         for proc in node.procs:
             try:
-                # [核心] 这里记录了参数个数 len(proc.params)
+                # [关键修改] 传入 param_count 参数
+                # len(proc.params) 就是该过程定义时的参数列表长度
                 self.symbol_table.define_proc(proc.name, param_count=len(proc.params))
             except Exception as e:
                 self.log_error(str(e), proc)
@@ -94,17 +135,22 @@ class SemanticAnalyzer:
 
         unused_vars = self.symbol_table.get_unused_variables()
         for sym in unused_vars:
-            # 这里我们作为 Warning 输出，不加入 errors 列表导致编译失败
-            # 或者你可以加到一个 self.warnings 列表里
-            print(f"\033[93m[Warning] 变量 '{sym.name}' 已定义但未使用\033[0m")
+            print(f"\033[93m[Warning] 变量 '{sym.name}' 已定义但未使用 (Unused Variable)\033[0m")
 
     def visit_ProcedureDecl(self, node):
         self.symbol_table.enter_scope()
         
         # 定义参数为局部变量
         for param in node.params:
+
+            shadowed_sym, _ = self.symbol_table.lookup(param)
+            if shadowed_sym:
+                print(f"\033[93m[Warning] 过程参数 '{param}' 遮蔽了外层作用域的同名标识符\033[0m")
+            
             try:
                 self.symbol_table.define_var(param)
+                sym, _ = self.symbol_table.lookup(param)
+                if sym: sym.is_initialized = True
             except Exception as e:
                 self.log_error(f"参数名重复: {str(e)}", node)
 
@@ -118,7 +164,7 @@ class SemanticAnalyzer:
             self.visit(stmt)
 
     def visit_Assign(self, node):
-        # 1. 检查右值表达式
+        # 1. 先检查右值表达式 (顺序很重要，比如 a := a + 1，此时右边的 a 必须是已初始化的)
         self.visit(node.right)
 
         # 2. 检查左值变量
@@ -126,14 +172,17 @@ class SemanticAnalyzer:
         sym, _ = self.symbol_table.lookup(var_name)
 
         if not sym:
+            # (原有的报错逻辑)
             suggestion = self._suggest_correction(var_name)
             self.log_error(f"使用了未定义的变量 '{var_name}'{suggestion}", node.left)
         else:
-            # [核心优化] 检查是否试图赋值给常量或过程
             if sym.type == SymbolType.CONST:
                 self.log_error(f"不能给常量 '{var_name}' 赋值", node.left)
             elif sym.type == SymbolType.PROC:
                 self.log_error(f"不能给过程名 '{var_name}' 赋值", node.left)
+            else:
+                # [新增] 成功赋值后，将该变量标记为已初始化
+                sym.is_initialized = True
 
     def visit_Call(self, node):
         # 1. 检查过程名是否存在
@@ -142,13 +191,13 @@ class SemanticAnalyzer:
 
         if not sym:
             self.log_error(f"调用了未定义的过程 '{proc_name}'", node)
-            return # 无法继续检查参数
+            return # 无法继续检查，直接返回
 
         if sym.type != SymbolType.PROC:
             self.log_error(f"'{proc_name}' 不是一个过程，无法调用", node)
             return
 
-        # 2. [核心优化] 检查参数个数匹配
+        # 2. [新增] 检查参数个数匹配
         expected_count = sym.param_count
         actual_count = len(node.args)
 
@@ -158,28 +207,49 @@ class SemanticAnalyzer:
                 node
             )
 
-        # 3. 递归检查实参表达式
+        # 3. 递归检查实参表达式 (确保实参里没有未定义变量等错误)
         for arg in node.args:
             self.visit(arg)
 
     def visit_If(self, node):
-        self.visit(node.condition)
+        self.visit(node.condition) # 检查内部是否有未定义变量
+        
+        cond_val = self.evaluate_static(node.condition)
+        
+        # 0 代表假
+        if cond_val == 0:
+            print(f"\033[93m[Warning] IF 条件恒为假，Then 分支将永远不会执行\033[0m")
+        
         self.visit(node.then_stmt)
+        
         if node.else_stmt:
+            # 非 0 代表真 (注意：inf 也是非0，所以不用特判)
+            if cond_val is not None and cond_val != 0:
+                 print(f"\033[93m[Warning] IF 条件恒为真，Else 分支将永远不会执行\033[0m")
             self.visit(node.else_stmt)
 
     def visit_While(self, node):
         self.visit(node.condition)
+        
+        cond_val = self.evaluate_static(node.condition)
+        
+        if cond_val == 0:
+            print(f"\033[93m[Warning] While 循环条件恒为假，循环体将不会执行\033[0m")
+        elif cond_val is not None and cond_val != 0:
+            print(f"\033[93m[Warning] 检测到死循环 (Infinite Loop)，循环条件恒为真\033[0m")
+
         self.visit(node.body)
     
     def visit_Read(self, node):
         for var in node.vars:
-            # 检查 read 的变量是否存在且为 VAR 类型
             sym, _ = self.symbol_table.lookup(var.name)
             if not sym:
                 self.log_error(f"Read 语句中变量 '{var.name}' 未定义", var)
             elif sym.type != SymbolType.VAR:
                 self.log_error(f"Read 只能读取变量，不能读取 '{var.name}' ({sym.type})", var)
+            else:
+                # [新增] 从输入流读取值后，变量也被视为已初始化
+                sym.is_initialized = True
 
     def visit_Write(self, node):
         for expr in node.exprs:
@@ -191,34 +261,99 @@ class SemanticAnalyzer:
         self.visit(node.left)
         self.visit(node.right)
         
-        # 除零检查
-        if node.op.type == TokenType.SLASH: # 除法
-            is_zero = False
+        # [修改] 增强版除零检查
+        if node.op.type == TokenType.SLASH: # 如果是除法
+            # 尝试计算右操作数（分母）的值
+            denom_val = self.evaluate_static(node.right)
             
-            # 1. 显式除零： 10 / 0
-            if isinstance(node.right, Num) and node.right.value == 0:
-                is_zero = True
+            # 情况1: 确切算出是 0 (例如: 10/0, 10/(5-5), 10/const_zero)
+            if denom_val == 0:
+                self.log_error("检测到除零错误 (编译期静态检测)", node.right)
             
-            # 2. 隐式常量除零： const z = 0; a / z;
-            elif isinstance(node.right, Var):
-                sym, _ = self.symbol_table.lookup(node.right.name, mark_as_used=True)
-                if sym and sym.type == SymbolType.CONST and sym.value == 0:
-                    is_zero = True
-            
-            if is_zero:
-                self.log_error("检测到除零错误 (Division by Zero)", node.right)
+            # 情况2: 算出是 inf (说明右边表达式内部已经发生了除零，例如 10/(1/0))
+            # 这种情况下，递归访问 node.right 时已经报过错了，这里可以忽略
+            elif denom_val == float('inf'):
+                pass
 
     def visit_UnaryOp(self, node):
         self.visit(node.expr)
 
     def visit_Var(self, node):
-        sym, _ = self.symbol_table.lookup(node.name)
+        sym, level_diff = self.symbol_table.lookup(node.name)
+        
         if not sym:
             suggestion = self._suggest_correction(node.name)
             self.log_error(f"未定义的标识符 '{node.name}'{suggestion}", node)
         else:
             if sym.type == SymbolType.PROC:
                 self.log_error(f"过程名 '{node.name}' 不能参与算术运算", node)
+            
+            # [修改] 未初始化检查逻辑
+            elif sym.type == SymbolType.VAR:
+                # 只有当变量属于"当前作用域" (level_diff == 0) 时，才严格检查初始化
+                # 如果 level_diff > 0 (说明是外层/全局变量)，因为我们还没分析主程序体，无法确定它是否被赋值，
+                # 所以为了避免误报，我们要放过它。
+                if level_diff == 0 and not sym.is_initialized:
+                    self.log_error(f"变量 '{node.name}' 可能在使用前未初始化", node)
 
     def visit_Num(self, node):
         pass
+
+    def evaluate_static(self, node):
+        """
+        [增强版] 支持算术运算和关系运算的静态求值
+        返回: 
+            - 整数值 (算术运算结果)
+            - 1 或 0 (关系运算结果，1为真，0为假)
+            - None (无法计算)
+        """
+        # 1. 基础值
+        if isinstance(node, Num):
+            return node.value
+        
+        elif isinstance(node, Var):
+            sym, _ = self.symbol_table.lookup(node.name)
+            if sym and sym.type == SymbolType.CONST:
+                # [修复] 强制转 int，避免字符串类型导致的错误
+                return int(sym.value)
+            return None 
+            
+        # 2. 一元运算 (支持 odd)
+        elif isinstance(node, UnaryOp):
+            val = self.evaluate_static(node.expr)
+            if val is None: return None
+            
+            if node.op.type == TokenType.MINUS: return -val
+            # [新增] odd 运算：奇数返回 1，偶数返回 0
+            if node.op.type == TokenType.ODD: return 1 if (val % 2 != 0) else 0
+            return val
+            
+        # 3. 二元运算 (支持算术 + 关系)
+        elif isinstance(node, BinOp):
+            left_val = self.evaluate_static(node.left)
+            right_val = self.evaluate_static(node.right)
+            
+            if left_val is None or right_val is None:
+                return None
+                
+            tt = node.op.type
+            
+            # --- 算术 ---
+            if tt == TokenType.PLUS: return left_val + right_val
+            if tt == TokenType.MINUS: return left_val - right_val
+            if tt == TokenType.TIMES: return left_val * right_val
+            if tt == TokenType.SLASH:
+                if right_val == 0: return float('inf')
+                return int(left_val / right_val)
+            
+            # --- [新增] 关系运算 (严格适配你的 <lop> 规则) ---
+            if tt == TokenType.EQUAL:         return 1 if left_val == right_val else 0
+            if tt == TokenType.NOT_EQUAL:     return 1 if left_val != right_val else 0
+            if tt == TokenType.LESS:          return 1 if left_val < right_val else 0
+            if tt == TokenType.LESS_EQUAL:    return 1 if left_val <= right_val else 0
+            if tt == TokenType.GREATER:       return 1 if left_val > right_val else 0
+            if tt == TokenType.GREATER_EQUAL: return 1 if left_val >= right_val else 0
+            
+            return None
+            
+        return None

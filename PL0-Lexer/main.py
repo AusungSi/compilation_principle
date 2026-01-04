@@ -55,8 +55,10 @@ def compile_and_run(source_code, args):
             printer = ASTPrinter()
             printer.print(ast)
 
+        print("--- DEBUG: 准备开始语义分析 ---")  # <--- 添加这行
         analyzer = SemanticAnalyzer()
         errors = analyzer.analyze(ast)
+        print(f"--- DEBUG: 语义分析结束，发现错误数: {len(errors)} ---")
 
         if len(errors) > 0:
             print("====== 编译失败：发现语义错误 ======")

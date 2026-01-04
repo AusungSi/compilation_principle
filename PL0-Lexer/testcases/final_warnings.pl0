@@ -1,0 +1,43 @@
+program WarningTest;
+const zero = 0;
+const one = 1;
+var gshadow, unusedglobal;
+var result;
+
+procedure factorial(n);
+var temp; 
+begin
+    if n = 1 then
+        result := 1
+    else
+    begin
+        call factorial(n - 1);
+        result := n * result
+    end
+end;
+
+procedure shadowTest(gshadow); 
+begin
+    write(gshadow)
+end
+
+begin
+    if zero = one then
+    begin
+        write(0); 
+        while 1 < 0 do
+            write(0) 
+    end;
+
+    if one = one then
+        write(1) 
+    else
+        write(0);  
+
+    gshadow := 999;
+    call shadowTest(10);
+    
+    call factorial(5);
+    write(result)
+
+end

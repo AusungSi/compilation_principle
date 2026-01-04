@@ -1,0 +1,32 @@
+program primes;
+const limit := 20;
+var candidate, d, rem, isPrime;
+
+procedure checkMod();
+var q;
+begin
+    q := candidate / d;
+    rem := candidate - q * d
+end;
+
+procedure checkPrime();
+begin
+    d := 2;
+    isPrime := 1;
+    while d < candidate do
+    begin
+        call checkMod();
+        if rem = 0 then isPrime := 0;
+        d := d + 1
+    end
+end
+
+begin
+    candidate := 2;
+    while candidate <= limit do
+    begin
+        call checkPrime();
+        if isPrime = 1 then write(candidate);
+        candidate := candidate + 1
+    end
+end

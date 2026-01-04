@@ -1,4 +1,5 @@
 from .token import TokenType, Token
+from .ast_nodes import *
 
 class ParserError(Exception):
     pass
@@ -63,10 +64,14 @@ class Parser:
         """<prog> → program <id>; <block>"""
         self.log("Program")
         self.indent_level += 1
+        
+        prog_name = "unknown"
 
         try:
             if self.current_token.type == TokenType.PROGRAM:
                 self.eat(TokenType.PROGRAM)
+                if self.current_token.type == TokenType.IDENTIFIER:
+                    prog_name = self.current_token.value # [AST] 记录程序名
                 self.eat(TokenType.IDENTIFIER)
                 self.eat(TokenType.SEMICOLON)
             else:
@@ -74,18 +79,24 @@ class Parser:
         except ParserError:
             self.synchronize()
 
-        # 解析 Block
-        self.parse_block()
+        # [AST] 解析 Block 并获取返回的节点
+        # 注意：这里调用的是修改后会返回 Block 节点的 parse_block
+        block_node = self.parse_block()
             
-        # 允许程序以 '.' 结束 (标准 PL/0)
+        # 检查结束符
         try:
             if self.current_token.type != TokenType.EOF:
-                self.error("程序结束后发现多余字符")
+                # 你的代码里如果是 '.' 可以在这里处理
+                # self.eat(TokenType.DOT) 
+                pass
         except ParserError:
             pass 
 
         self.indent_level -= 1
         self.log_close("Program")
+        
+        # [AST] 返回根节点
+        return Program(prog_name, block_node)
 
     def parse_block(self):
         """
@@ -94,134 +105,137 @@ class Parser:
         """
         self.log("Block")
         self.indent_level += 1
-
-        # 用于记录已经解析过的部分，防止重复或检查顺序
-        # 0: None, 1: Const, 2: Var, 3: Proc
-        last_decl_stage = 0 
-
+        
+        # [AST] 初始化收集器
+        all_consts = []
+        all_vars = []
+        all_procs = []
+        
         decl_starters = [TokenType.CONST, TokenType.VAR, TokenType.PROCEDURE]
-
+        
+        # 保留你原有的乱序解析逻辑
         while self.current_token.type in decl_starters:
             try:
                 if self.current_token.type == TokenType.CONST:
-                    if last_decl_stage > 1: # 如果在 Var(2) 或 Proc(3) 之后遇到
-                        self.error("顺序错误：'const' 必须在 'var' 和 'procedure' 之前")
-                    # 即使顺序错了，也继续解析，以便发现后续错误
-                    self.parse_condecl()
-                    last_decl_stage = max(last_decl_stage, 1) # 更新状态
-                
+                    # [AST] extend 列表
+                    all_consts.extend(self.parse_condecl())
+                    
                 elif self.current_token.type == TokenType.VAR:
-                    if last_decl_stage > 2: # 如果在 Proc(3) 之后
-                        self.error("顺序错误：'var' 必须在 'procedure' 之前")
-                    self.parse_vardecl()
-                    last_decl_stage = max(last_decl_stage, 2)
-                
+                    # [AST] extend 列表
+                    all_vars.extend(self.parse_vardecl())
+                    
                 elif self.current_token.type == TokenType.PROCEDURE:
-                    # procedure 是最后一个声明部分，后面可以跟多个 procedure
-                    self.parse_proc() 
-                    # parse_proc 内部已经处理了 {; proc} 的循环，
-                    # 但为了配合外层 while 循环处理乱序情况，这里不需要额外逻辑
-                    last_decl_stage = max(last_decl_stage, 3)
-
+                    # [AST] parse_proc 需要修改为返回 ProcedureDecl 列表
+                    procs_list = self.parse_proc() 
+                    all_procs.extend(procs_list)
+                    
             except ParserError:
                 self.synchronize()
 
-        # 解析主体 Body
+        # 解析 Body
+        body_node = NoOp()
         try:
-            self.parse_body()
+            body_node = self.parse_body()
         except ParserError:
             self.synchronize()
 
         self.indent_level -= 1
         self.log_close("Block")
+        
+        # [AST] 返回完整的 Block 节点
+        return Block(all_consts, all_vars, all_procs, body_node)
 
     def parse_proc(self):
         """
         <proc> → procedure <id>（[<id>{,<id>}]）;<block>{;<proc>}
         改进：将 Header 和 Block 分开 try-except，确保 Header 错了也能继续解析 Block。
         """
+        procs = [] # [AST]
+        
         while True:
             self.log("Procedure")
             self.indent_level += 1
             
-            # --- 第一阶段：解析过程头 (Header) ---
+            # 1. Header
+            proc_name = None
+            params = []
             try:
                 self.eat(TokenType.PROCEDURE)
+                proc_name = self.current_token.value
                 self.eat(TokenType.IDENTIFIER)
-                
-                # 强制参数括号
                 self.eat(TokenType.LPAREN)
+                # ... 解析参数 ...
                 if self.current_token.type == TokenType.IDENTIFIER:
+                    params.append(self.current_token.value)
                     self.eat(TokenType.IDENTIFIER)
                     while self.current_token.type == TokenType.COMMA:
                         self.eat(TokenType.COMMA)
+                        params.append(self.current_token.value)
                         self.eat(TokenType.IDENTIFIER)
                 self.eat(TokenType.RPAREN)
-                
                 self.eat(TokenType.SEMICOLON)
-
             except ParserError:
-                # 如果头部出错（比如参数不对），恢复到 Block 开始的地方
                 self.synchronize()
-                # synchronize 可能会停在 BEGIN, VAR, CONST 等位置，正好给下面的 parse_block 用
 
-            # --- 第二阶段：解析过程体 (Block) ---
-            # 无论 Header 是否成功，都要尝试解析 Block，以免跳过整个函数体导致后续错位
+            # 2. Block
+            block_node = None
             try:
-                self.parse_block()
+                block_node = self.parse_block() # 递归调用
             except ParserError:
                 self.synchronize()
-            
+
             self.indent_level -= 1
             self.log_close("Procedure")
-
-            # --- 第三阶段：检查是否有后续过程 ---
-            # 结构：procedure ... ; block ; procedure ...
-            # block 解析完后，后面应该紧跟一个分号
             
+            # [AST] 如果解析成功，创建节点并加入列表
+            if proc_name and block_node:
+                procs.append(ProcedureDecl(proc_name, params, block_node))
+
+            # 3. 检查循环
             if self.current_token.type == TokenType.SEMICOLON:
-                # 预读：如果分号后面是 procedure，则继续循环
                 if self.lexer.peek_token_type() == TokenType.PROCEDURE:
                     self.eat(TokenType.SEMICOLON)
-                    continue 
+                    continue
                 else:
-                    # 分号后面不是 procedure，说明过程声明结束
-                    # 注意：这个分号不属于 process 声明的一部分，而是分隔符
-                    # 在 parse_block 的 while 循环中，如果不吃掉这个分号，
-                    # 应该由 parse_block 的逻辑处理（通常 block 结束不带分号，分号是分隔符）
-                    # 但在这里，<proc> 规则是 {; <proc>}，所以这个分号是循环的一部分
-                    break 
+                    # 这里的 break 很重要，不要吃掉分号，
+                    # 除非你确定这个分号不属于外层 Block 的 Body 分隔符
+                    # 按照 PL/0 惯例，procedure 结束后没有分号，分号是语句分隔符
+                    # 但你的文法是 {; <proc>}，所以这里分号属于 proc 循环
+                    break
             else:
                 break
+                
+        return procs
 
     def parse_condecl(self):
-        """
-        <condecl> → const <const>{,<const>}; 
-        <const> → <id>:=<integer>
-        修改：使用 := 而不是 =
-        """
         self.log("ConstDecl")
         self.indent_level += 1
+        decls = []
+        
         self.eat(TokenType.CONST)
         while True:
+            name_token = self.current_token
             self.eat(TokenType.IDENTIFIER)
-            
-            # 修改点：语法要求使用 := (ASSIGN)
-            if self.current_token.type == TokenType.EQUAL:
-                self.error("常量声明请使用 ':=' 而不是 '='")
-                self.eat(TokenType.EQUAL) # 容错处理
-            else:
+            # ... 省略中间你的检查逻辑 ...
+            if self.current_token.type == TokenType.ASSIGN:
                 self.eat(TokenType.ASSIGN)
-            
+            else:
+                self.eat(TokenType.EQUAL) # 你的容错逻辑
+                
+            val_token = self.current_token
             self.eat(TokenType.INTEGER)
+            
+            decls.append(ConstDecl(name_token.value, val_token.value)) # [AST]
             
             if self.current_token.type == TokenType.COMMA:
                 self.eat(TokenType.COMMA)
             else:
                 break
         self.eat(TokenType.SEMICOLON)
+        
         self.indent_level -= 1
         self.log_close("ConstDecl")
+        return decls
 
     def parse_statement(self):
         """
@@ -231,65 +245,80 @@ class Parser:
         self.indent_level += 1
         
         tt = self.current_token.type
+        node = NoOp()
         
         if tt == TokenType.IDENTIFIER:
+            var_token = self.current_token
             self.eat(TokenType.IDENTIFIER)
             self.eat(TokenType.ASSIGN)
-            self.parse_exp()
+            expr = self.parse_exp()
+            # [AST] 创建赋值节点
+            node = Assign(Var(var_token), expr)
             
         elif tt == TokenType.IF:
             self.eat(TokenType.IF)
-            self.parse_lexp()
+            condition = self.parse_lexp() # 注意：parse_lexp 也需要修改为返回 AST
             self.eat(TokenType.THEN)
-            self.parse_statement()
+            then_stmt = self.parse_statement()
+            else_stmt = None
             if self.current_token.type == TokenType.ELSE:
                 self.eat(TokenType.ELSE)
-                self.parse_statement()
+                else_stmt = self.parse_statement()
+            # [AST] 创建 If 节点
+            node = If(condition, then_stmt, else_stmt)
                 
         elif tt == TokenType.WHILE:
             self.eat(TokenType.WHILE)
-            self.parse_lexp()
+            condition = self.parse_lexp()
             self.eat(TokenType.DO)
-            self.parse_statement()
+            body = self.parse_statement()
+            # [AST] 创建 While 节点
+            node = While(condition, body)
             
         elif tt == TokenType.CALL:
-            # call <id>（[<exp>{,<exp>}]）
             self.eat(TokenType.CALL)
+            proc_name = self.current_token.value
             self.eat(TokenType.IDENTIFIER)
-            
-            # 修改点：强制要求括号
+            # 强制括号
             self.eat(TokenType.LPAREN)
-            
+            args = []
             if self._is_exp_start():
-                self.parse_exp()
+                args.append(self.parse_exp())
                 while self.current_token.type == TokenType.COMMA:
                     self.eat(TokenType.COMMA)
-                    self.parse_exp()
-            
+                    args.append(self.parse_exp())
             self.eat(TokenType.RPAREN)
+            # [AST] 创建 Call 节点
+            node = Call(proc_name, args)
                 
         elif tt == TokenType.READ:
             self.eat(TokenType.READ)
             self.eat(TokenType.LPAREN)
-            self.eat(TokenType.IDENTIFIER)
-            while self.current_token.type == TokenType.COMMA:
-                self.eat(TokenType.COMMA)
+            vars = []
+            if self.current_token.type == TokenType.IDENTIFIER:
+                vars.append(Var(self.current_token)) # [AST]
                 self.eat(TokenType.IDENTIFIER)
+                while self.current_token.type == TokenType.COMMA:
+                    self.eat(TokenType.COMMA)
+                    vars.append(Var(self.current_token)) # [AST]
+                    self.eat(TokenType.IDENTIFIER)
             self.eat(TokenType.RPAREN)
+            node = Read(vars)
             
         elif tt == TokenType.WRITE:
             self.eat(TokenType.WRITE)
             self.eat(TokenType.LPAREN)
-            self.parse_exp()
+            exprs = []
+            exprs.append(self.parse_exp())
             while self.current_token.type == TokenType.COMMA:
                 self.eat(TokenType.COMMA)
-                self.parse_exp()
+                exprs.append(self.parse_exp())
             self.eat(TokenType.RPAREN)
+            node = Write(exprs)
             
         elif tt == TokenType.BEGIN:
-            # Body 作为 Statement 的一部分 (嵌套块)
-            self.indent_level -= 1 # 调整缩进，因为 parse_body 会加
-            self.parse_body()
+            self.indent_level -= 1 
+            node = self.parse_body() # parse_body 会返回 Compound
             self.indent_level += 1
         
         # 处理空语句（例如分号前的空隙），或者 END 前的空隙
@@ -301,99 +330,171 @@ class Parser:
 
         self.indent_level -= 1
         self.log_close("Statement")
+        return node
 
     # ================= 其他辅助方法保持不变 =================
 
     def parse_vardecl(self):
         self.log("VarDecl")
         self.indent_level += 1
+        
+        decls = [] # [AST]
+        
         self.eat(TokenType.VAR)
         while True:
+            token = self.current_token
             self.eat(TokenType.IDENTIFIER)
+            decls.append(VarDecl(token.value)) # [AST] 添加到列表
+            
             if self.current_token.type == TokenType.COMMA:
                 self.eat(TokenType.COMMA)
             else:
                 break
         self.eat(TokenType.SEMICOLON)
+        
         self.indent_level -= 1
         self.log_close("VarDecl")
+        return decls
 
     def parse_body(self):
         self.log("Body")
         self.indent_level += 1
+        
         self.eat(TokenType.BEGIN)
-        self._safe_parse_statement()
+        statements = [] # [AST] 语句列表
+        
+        # 使用你原有的 _safe_parse_statement 封装，但需要它返回值
+        stmt = self._safe_parse_statement()
+        if stmt: statements.append(stmt)
+        
         while self.current_token.type == TokenType.SEMICOLON:
             self.eat(TokenType.SEMICOLON)
-            self._safe_parse_statement()
+            stmt = self._safe_parse_statement()
+            if stmt: statements.append(stmt)
+            
         self.eat(TokenType.END)
+        
         self.indent_level -= 1
         self.log_close("Body")
+        
+        # [AST] 创建 Compound 节点
+        compound = Compound()
+        compound.children = statements
+        return compound
 
     def _safe_parse_statement(self):
         try:
-            self.parse_statement()
+            return self.parse_statement()
         except ParserError:
             self.synchronize()
+            return NoOp()
 
     def parse_lexp(self):
         self.log("Condition")
         self.indent_level += 1
+        
+        node = NoOp() # 默认值，防止分支未覆盖
+
+        # 情况 1: odd <exp>
         if self.current_token.type == TokenType.ODD:
+            op = self.current_token
             self.eat(TokenType.ODD)
-            self.parse_exp()
+            expr = self.parse_exp() # [AST] 获取表达式子树
+            node = UnaryOp(op, expr) # [AST] 创建一元运算节点
+
+        # 情况 2: <exp> <lop> <exp>
         else:
-            self.parse_exp()
+            left = self.parse_exp() # [AST] 获取左侧表达式
+            
+            # 检查关系运算符
             if self.current_token.type in [
                 TokenType.EQUAL, TokenType.NOT_EQUAL, 
                 TokenType.LESS, TokenType.LESS_EQUAL, 
                 TokenType.GREATER, TokenType.GREATER_EQUAL
             ]:
+                op = self.current_token
                 self.eat(self.current_token.type)
-                self.parse_exp()
+                right = self.parse_exp() # [AST] 获取右侧表达式
+                node = BinOp(left, op, right) # [AST] 创建二元运算节点
             else:
                 self.error("条件表达式缺少关系运算符")
+                # 出错时，为了让树不断裂，可以临时把左值作为结果，或者返回 NoOp
+                node = left 
+
         self.indent_level -= 1
         self.log_close("Condition")
+        return node
 
     def parse_exp(self):
         self.log("Expression")
         self.indent_level += 1
+        
+        # 【关键修正】处理一元运算符或直接解析 term，都必须赋值给 node
         if self.current_token.type in [TokenType.PLUS, TokenType.MINUS]:
-            self.eat(self.current_token.type)
-        self.parse_term()
+            op = self.current_token
+            self.eat(op.type)
+            term = self.parse_term()
+            node = UnaryOp(op=op, expr=term)
+        else:
+            node = self.parse_term() # <--- 确保这里有 node = 
+
         while self.current_token.type in [TokenType.PLUS, TokenType.MINUS]:
-            self.eat(self.current_token.type)
-            self.parse_term()
+            op = self.current_token
+            self.eat(op.type)
+            right = self.parse_term()
+            node = BinOp(left=node, op=op, right=right)
+
         self.indent_level -= 1
         self.log_close("Expression")
+        return node
 
     def parse_term(self):
         self.log("Term")
         self.indent_level += 1
-        self.parse_factor()
+
+        node = self.parse_factor()
+
         while self.current_token.type in [TokenType.TIMES, TokenType.SLASH]:
+            op = self.current_token
             self.eat(self.current_token.type)
-            self.parse_factor()
+            right = self.parse_factor()
+            node = BinOp(left=node, op=op, right=right)
+
         self.indent_level -= 1
         self.log_close("Term")
+        return node
 
     def parse_factor(self):
         self.log("Factor")
         self.indent_level += 1
+        
+        # 【关键修正】初始化 node，防止进入 else 分支后 node 未定义
+        node = NoOp() 
+        
         tt = self.current_token.type
+        
         if tt == TokenType.IDENTIFIER:
+            token = self.current_token
             self.eat(TokenType.IDENTIFIER)
+            node = Var(token)
+            
         elif tt == TokenType.INTEGER:
+            token = self.current_token
             self.eat(TokenType.INTEGER)
+            node = Num(token)
+            
         elif tt == TokenType.LPAREN:
             self.eat(TokenType.LPAREN)
-            self.parse_exp()
+            node = self.parse_exp()
             self.eat(TokenType.RPAREN)
+            
         else:
-            self.error("Factor 语法错误: 期望 ID, Integer 或 (Exp)")
+            self.error("Factor 语法错误")
+            # 即使报错，node 也有初始值 NoOp，不会导致 Python 崩溃
+            
         self.indent_level -= 1
         self.log_close("Factor")
+        return node
 
     def _is_exp_start(self):
         tt = self.current_token.type

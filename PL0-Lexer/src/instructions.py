@@ -20,8 +20,8 @@ class OpCode(Enum):
 class Instruction:
     def __init__(self, f: OpCode, l: int, a: int):
         self.f = f  # Function code (功能码)
-        self.l = l  # Level difference (层差)
-        self.a = a  # Address / Value / OprCode (位移量或操作码)
+        self.l = int(l)  # Level difference (层差)
+        self.a = int(a)  # Address / Value / OprCode (位移量或操作码)
 
     def __repr__(self):
         # 格式化输出，例如 "LIT 0 5"

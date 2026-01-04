@@ -12,7 +12,7 @@ class CodeGenerator:
     def generate(self, node):
         """主入口"""
         self.instructions = []
-        self.symbol_table = SymbolTable()
+        # self.symbol_table = SymbolTable()
         try:
             self.visit(node)
             return self.instructions

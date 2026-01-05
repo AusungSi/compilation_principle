@@ -35,7 +35,7 @@ class SemanticAnalyzer:
     """
     def __init__(self):
         self.symbol_table = SymbolTable()
-        self.errors = [] # [核心] 错误收集列表
+        self.errors = [] # 错误收集列表
 
     def _suggest_correction(self, invalid_name):
         all_syms = self.symbol_table.get_all_symbols()
@@ -44,7 +44,6 @@ class SemanticAnalyzer:
         
         for sym in all_syms:
             dist = levenshtein_distance(invalid_name, sym.name)
-            # 只有当相似度足够高（距离小于3且小于名字长度的一半）才建议
             if dist < 3 and dist < len(invalid_name):
                 if dist < min_dist:
                     min_dist = dist
@@ -57,19 +56,18 @@ class SemanticAnalyzer:
     def analyze(self, node):
         """主入口"""
         self.errors = []
-        self.symbol_table = SymbolTable() # 重置符号表
+        self.symbol_table = SymbolTable() 
         self.visit(node)
-        return self.errors # 返回错误列表给主程序判断
+        return self.errors 
 
     def log_error(self, msg, node=None):
         """
         记录错误，尽量尝试获取行号
         """
         pos_info = ""
-        # 尝试从 AST 节点中提取 token 信息来定位行号
         if hasattr(node, 'token') and node.token:
             pos_info = f"[Line {node.token.line}, Col {node.token.column}] "
-        elif hasattr(node, 'op') and node.op: # BinOp, UnaryOp
+        elif hasattr(node, 'op') and node.op: 
             pos_info = f"[Line {node.op.line}, Col {node.op.column}] "
         
         self.errors.append(f"{pos_info}语义错误: {msg}")
@@ -81,10 +79,8 @@ class SemanticAnalyzer:
         return visitor(node)
 
     def generic_visit(self, node):
-        # 默认递归访问所有子节点（如果 AST 结构比较复杂，这里可能需要根据节点类型手动处理）
         pass
 
-    # ================= 结构访问 (作用域管理) =================
 
     def visit_Program(self, node):
         self.symbol_table.enter_scope()
@@ -102,7 +98,6 @@ class SemanticAnalyzer:
             try:
                 self.symbol_table.define_const(const.name, const.value)
             except Exception as e:
-                # 捕获 SymbolTable 抛出的重复定义异常，转化为语义错误
                 self.log_error(str(e), const)
 
         # 2. 定义变量
@@ -120,8 +115,6 @@ class SemanticAnalyzer:
         # 3. 定义过程 (先定义，后递归，支持递归调用)
         for proc in node.procs:
             try:
-                # [关键修改] 传入 param_count 参数
-                # len(proc.params) 就是该过程定义时的参数列表长度
                 self.symbol_table.define_proc(proc.name, param_count=len(proc.params))
             except Exception as e:
                 self.log_error(str(e), proc)
@@ -156,15 +149,13 @@ class SemanticAnalyzer:
 
         self.visit(node.block)
         self.symbol_table.exit_scope()
-    
-    # ================= 语句检查 =================
 
     def visit_Compound(self, node):
         for stmt in node.children:
             self.visit(stmt)
 
     def visit_Assign(self, node):
-        # 1. 先检查右值表达式 (顺序很重要，比如 a := a + 1，此时右边的 a 必须是已初始化的)
+        # 1. 先检查右值表达式
         self.visit(node.right)
 
         # 2. 检查左值变量
@@ -172,7 +163,6 @@ class SemanticAnalyzer:
         sym, _ = self.symbol_table.lookup(var_name)
 
         if not sym:
-            # (原有的报错逻辑)
             suggestion = self._suggest_correction(var_name)
             self.log_error(f"使用了未定义的变量 '{var_name}'{suggestion}", node.left)
         else:
@@ -181,7 +171,6 @@ class SemanticAnalyzer:
             elif sym.type == SymbolType.PROC:
                 self.log_error(f"不能给过程名 '{var_name}' 赋值", node.left)
             else:
-                # [新增] 成功赋值后，将该变量标记为已初始化
                 sym.is_initialized = True
 
     def visit_Call(self, node):
@@ -191,13 +180,13 @@ class SemanticAnalyzer:
 
         if not sym:
             self.log_error(f"调用了未定义的过程 '{proc_name}'", node)
-            return # 无法继续检查，直接返回
+            return 
 
         if sym.type != SymbolType.PROC:
             self.log_error(f"'{proc_name}' 不是一个过程，无法调用", node)
             return
 
-        # 2. [新增] 检查参数个数匹配
+        # 2. 检查参数个数匹配
         expected_count = sym.param_count
         actual_count = len(node.args)
 
@@ -207,23 +196,21 @@ class SemanticAnalyzer:
                 node
             )
 
-        # 3. 递归检查实参表达式 (确保实参里没有未定义变量等错误)
+        # 3. 递归检查实参表达式
         for arg in node.args:
             self.visit(arg)
 
     def visit_If(self, node):
-        self.visit(node.condition) # 检查内部是否有未定义变量
+        self.visit(node.condition)
         
         cond_val = self.evaluate_static(node.condition)
         
-        # 0 代表假
         if cond_val == 0:
             print(f"\033[93m[Warning] IF 条件恒为假，Then 分支将永远不会执行\033[0m")
         
         self.visit(node.then_stmt)
         
         if node.else_stmt:
-            # 非 0 代表真 (注意：inf 也是非0，所以不用特判)
             if cond_val is not None and cond_val != 0:
                  print(f"\033[93m[Warning] IF 条件恒为真，Else 分支将永远不会执行\033[0m")
             self.visit(node.else_stmt)
@@ -248,30 +235,24 @@ class SemanticAnalyzer:
             elif sym.type != SymbolType.VAR:
                 self.log_error(f"Read 只能读取变量，不能读取 '{var.name}' ({sym.type})", var)
             else:
-                # [新增] 从输入流读取值后，变量也被视为已初始化
                 sym.is_initialized = True
 
     def visit_Write(self, node):
         for expr in node.exprs:
             self.visit(expr)
 
-    # ================= 表达式检查 =================
-
     def visit_BinOp(self, node):
         self.visit(node.left)
         self.visit(node.right)
         
-        # [修改] 增强版除零检查
-        if node.op.type == TokenType.SLASH: # 如果是除法
-            # 尝试计算右操作数（分母）的值
+        if node.op.type == TokenType.SLASH:
             denom_val = self.evaluate_static(node.right)
             
-            # 情况1: 确切算出是 0 (例如: 10/0, 10/(5-5), 10/const_zero)
+            # 情况1: 确切算出是 0 
             if denom_val == 0:
                 self.log_error("检测到除零错误 (编译期静态检测)", node.right)
             
-            # 情况2: 算出是 inf (说明右边表达式内部已经发生了除零，例如 10/(1/0))
-            # 这种情况下，递归访问 node.right 时已经报过错了，这里可以忽略
+            # 情况2: 算出是 inf 
             elif denom_val == float('inf'):
                 pass
 
@@ -288,11 +269,7 @@ class SemanticAnalyzer:
             if sym.type == SymbolType.PROC:
                 self.log_error(f"过程名 '{node.name}' 不能参与算术运算", node)
             
-            # [修改] 未初始化检查逻辑
             elif sym.type == SymbolType.VAR:
-                # 只有当变量属于"当前作用域" (level_diff == 0) 时，才严格检查初始化
-                # 如果 level_diff > 0 (说明是外层/全局变量)，因为我们还没分析主程序体，无法确定它是否被赋值，
-                # 所以为了避免误报，我们要放过它。
                 if level_diff == 0 and not sym.is_initialized:
                     self.log_error(f"变量 '{node.name}' 可能在使用前未初始化", node)
 
@@ -314,7 +291,6 @@ class SemanticAnalyzer:
         elif isinstance(node, Var):
             sym, _ = self.symbol_table.lookup(node.name)
             if sym and sym.type == SymbolType.CONST:
-                # [修复] 强制转 int，避免字符串类型导致的错误
                 return int(sym.value)
             return None 
             
@@ -324,7 +300,6 @@ class SemanticAnalyzer:
             if val is None: return None
             
             if node.op.type == TokenType.MINUS: return -val
-            # [新增] odd 运算：奇数返回 1，偶数返回 0
             if node.op.type == TokenType.ODD: return 1 if (val % 2 != 0) else 0
             return val
             
@@ -346,7 +321,6 @@ class SemanticAnalyzer:
                 if right_val == 0: return float('inf')
                 return int(left_val / right_val)
             
-            # --- [新增] 关系运算 (严格适配你的 <lop> 规则) ---
             if tt == TokenType.EQUAL:         return 1 if left_val == right_val else 0
             if tt == TokenType.NOT_EQUAL:     return 1 if left_val != right_val else 0
             if tt == TokenType.LESS:          return 1 if left_val < right_val else 0

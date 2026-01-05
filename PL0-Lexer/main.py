@@ -2,7 +2,6 @@ import sys
 import os
 import argparse
 
-# 将当前目录添加到搜索路径，确保能找到 pl0_core
 sys.path.append(os.getcwd())
 
 from src.lexer import Lexer
@@ -21,7 +20,7 @@ def print_pcode(instructions):
     print("-" * 50)
     
     for i, instr in enumerate(instructions):
-        # 简单的指令说明注释
+        # 指令说明注释
         comment = ""
         f_name = instr.f.name if hasattr(instr.f, 'name') else str(instr.f)
         
@@ -49,13 +48,12 @@ def compile_and_run(source_code, args):
         parser = Parser(lexer)
         ast = parser.parse()
         
-        # 如果需要展示 AST
         if args.show_ast:
             print_header("抽象语法树 (AST)")
             printer = ASTPrinter()
             printer.print(ast)
 
-        print("--- DEBUG: 准备开始语义分析 ---")  # <--- 添加这行
+        print("--- DEBUG: 准备开始语义分析 ---")
         analyzer = SemanticAnalyzer()
         errors = analyzer.analyze(ast)
         print(f"--- DEBUG: 语义分析结束，发现错误数: {len(errors)} ---")
@@ -63,8 +61,7 @@ def compile_and_run(source_code, args):
         if len(errors) > 0:
             print("====== 编译失败：发现语义错误 ======")
             for err in errors:
-                print(f"\033[91m{err}\033[0m") # 红色输出错误
-            # 遇到语义错误，不再进行代码生成
+                print(f"\033[91m{err}\033[0m")
             exit(1)
 
         # --- 3. 代码生成 ---
@@ -72,7 +69,6 @@ def compile_and_run(source_code, args):
         generator = CodeGenerator()
         code = generator.generate(ast)
 
-        # 如果需要展示 P-Code
         if args.show_code:
             print_pcode(code)
 
@@ -90,7 +86,6 @@ def compile_and_run(source_code, args):
 def main():
     parser = argparse.ArgumentParser(description="PL/0 语言编译器与解释器")
     
-    # 命令行参数定义
     parser.add_argument('file', nargs='?', help="PL/0 源文件路径 (.pl0)")
     parser.add_argument('--show-ast', action='store_true', help="显示抽象语法树")
     parser.add_argument('--show-code', action='store_true', help="显示生成的 P-Code 指令")
@@ -100,10 +95,8 @@ def main():
 
     args = parser.parse_args()
 
-    # 如果没有提供文件，使用默认的测试代码
     if not args.file:
         print("\033[33m提示: 未提供源文件，正在运行内置测试代码...\033[0m")
-        # 这是一个经典的递归阶乘测试程序，用于验证复杂的编译器功能
         source_code = """
 program factorial_test;
 var n, result;
@@ -130,11 +123,9 @@ begin
     end
 end
 """
-        # 默认测试时开启显示
         args.show_ast = True
         args.show_code = True
     else:
-        # 读取文件内容
         if not os.path.exists(args.file):
             print(f"错误: 找不到文件 {args.file}")
             return

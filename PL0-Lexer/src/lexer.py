@@ -2,7 +2,7 @@ from .token import Token, TokenType, KEYWORDS
 
 class Lexer:
     """
-    PL/0 语言的词法分析器。
+    词法分析器。
     """
     def __init__(self, source_code: str):
         self.source = source_code
@@ -55,18 +55,15 @@ class Lexer:
             return self.source[peek_pos]
         return None
     
-    # 添加到 Lexer 类中
     def peek_token_type(self):
         """
         预读下一个 Token 的类型，但不移动当前指针。
         用于解决 LL(1) 冲突，例如判断分号后是 procedure 还是 begin。
         """
-        # 保存当前状态
         old_pos = self.pos
         old_char = self.current_char
         old_line = self.line
         old_column = self.column
-        # 还要保存错误列表，防止预读时产生的错误被记录
         old_errors = list(self.errors)
 
         # 获取下一个

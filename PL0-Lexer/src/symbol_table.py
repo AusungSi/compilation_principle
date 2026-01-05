@@ -1,5 +1,3 @@
-# pl0_core/symbol_table.py
-
 class SymbolType:
     CONST = "CONST"
     VAR = "VAR"
@@ -36,7 +34,6 @@ class SymbolTable:
         self.scopes = [] 
         
         # 地址计数器栈：记录每一层当前分配到了哪个地址
-        # PL/0 默认前3个单元(0,1,2)用于系统链路(SL, DL, RA)，所以变量从3开始
         self.addr_counters = []
         
         # 当前层级 (-1 表示尚未开始，主程序是 0)
@@ -44,8 +41,8 @@ class SymbolTable:
 
     def enter_scope(self):
         """进入新的作用域 (层级+1)"""
-        self.scopes.append([])       # 新的符号列表
-        self.addr_counters.append(3) # 新的地址计数器，从3开始
+        self.scopes.append([])       # 符号列表
+        self.addr_counters.append(3) # 地址计数器
         self.current_level += 1
 
     def exit_scope(self):
@@ -91,12 +88,12 @@ class SymbolTable:
         """
         查找符号
         mark_as_used: 如果为 True，查找成功时将符号标记为已引用
+        按层级按顺序查找
         """
         for i in range(len(self.scopes) - 1, -1, -1):
             scope = self.scopes[i]
             for sym in scope:
                 if sym.name == name:
-                    # [新增] 如果找到了，标记为已引用
                     if mark_as_used:
                         sym.referenced = True
                     return sym, self.current_level - sym.level
@@ -105,8 +102,6 @@ class SymbolTable:
     def get_unused_variables(self):
         unused = []
         if self.scopes:
-            # 只检查当前最内层的作用域 (self.scopes[-1])
-            # 因为外层变量可能在后续代码中才被用到
             for sym in self.scopes[-1]:
                 if sym.type == SymbolType.VAR and not sym.referenced:
                     unused.append(sym)
@@ -127,7 +122,7 @@ class SymbolTable:
         """获取当前作用域中未使用的变量（在 exit_scope 前调用）"""
         unused = []
         if self.scopes:
-            for sym in self.scopes[-1]: # 只检查当前层，因为外层可能还在后面被用到
+            for sym in self.scopes[-1]:
                 if sym.type == SymbolType.VAR and not sym.referenced:
                     unused.append(sym)
         return unused

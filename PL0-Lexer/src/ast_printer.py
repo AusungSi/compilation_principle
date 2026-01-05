@@ -1,4 +1,3 @@
-# ast_printer.py
 from .ast_nodes import *
 
 class ASTPrinter:
@@ -6,17 +5,13 @@ class ASTPrinter:
         self._print_recursive(node, "", True)
 
     def _print_recursive(self, node, prefix, is_last):
-        # 打印当前节点的连线
         connector = "└── " if is_last else "├── "
         print(f"{prefix}{connector}{self._get_node_label(node)}")
 
-        # 准备子节点的缩进前缀
         child_prefix = prefix + ("    " if is_last else "│   ")
 
-        # 获取子节点列表
         children = self._get_children(node)
         
-        # 递归打印所有子节点
         count = len(children)
         for i, child in enumerate(children):
             is_last_child = (i == count - 1)
@@ -63,7 +58,6 @@ class ASTPrinter:
         if isinstance(node, Program):
             return [node.block]
         elif isinstance(node, Block):
-            # 将所有声明和 Body 合并展示
             return node.consts + node.vars + node.procs + [node.body]
         elif isinstance(node, ProcedureDecl):
             return [node.block]

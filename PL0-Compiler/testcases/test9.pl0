@@ -1,0 +1,17 @@
+program testDivCheck;
+const z = 0;
+const a = 10;
+const b = 10;
+var v;
+begin
+    read(v);
+    
+    v := 100 / v; 
+    v := 100 / (a - 2); 
+    
+    v := 100 / 0;   
+    v := 100 / z;   
+    v := 100 / (a - b); 
+    
+    write(v)
+end

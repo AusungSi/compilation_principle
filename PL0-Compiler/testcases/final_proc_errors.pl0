@@ -1,0 +1,27 @@
+program ProcErrors;
+var v;
+
+procedure add(a, b);
+begin
+    write(a + b)
+end;
+
+procedure noParam;
+begin
+    write(0)
+end
+
+begin
+    call add(1);
+
+    call add(1, 2, 3);
+
+    call noParam(1);
+
+    add := 10;
+    
+    v := add + 1;
+
+    v := 10;
+    call v()
+end

@@ -1,0 +1,17 @@
+program DataErrors;
+const PI = 3;
+const Z = 0;
+var a, b;
+begin
+    PI := 4;
+
+    b := a + 1;
+
+    b := 100 / 0;
+
+    b := 100 / Z;
+
+    b := 100 / (PI - 3);
+
+    write(b)
+end

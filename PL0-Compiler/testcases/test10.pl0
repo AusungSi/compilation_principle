@@ -1,0 +1,19 @@
+program testDead;
+const zero = 0;
+const one = 1;
+begin
+
+    if zero = one then
+        write(1); 
+        
+    if zero = zero then
+        write(2)
+    else
+        write(3); 
+        
+    while 1 < 0 do
+        write(4); 
+        
+    while 1 >= 1 do
+        write(5)  
+end

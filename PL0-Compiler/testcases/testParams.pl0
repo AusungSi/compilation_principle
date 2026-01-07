@@ -1,0 +1,23 @@
+program testParams;
+var x;
+
+procedure add(a, b);
+begin
+    x := a + b
+end;
+
+procedure nothing();
+begin
+    write(0)
+end
+
+begin
+    call add(1, 2); 
+    call add(1);   
+    call add(1, 2, 3);  
+    
+    call nothing();   
+    call nothing(1);  
+    
+    call add(nothing, 1)  
+end

@@ -1,0 +1,76 @@
+program FinalTest;
+
+const
+maxlimit = 1000,
+minval = 0,
+factor = 2;
+
+var
+x, y, result, temp;
+
+procedure gcd(a, b);
+var remainder;
+begin
+if b = 0 then
+result := a
+else
+begin
+remainder := a;
+while remainder >= b do
+remainder := remainder - b;
+
+call gcd(b, remainder)
+
+
+end
+end;
+
+procedure factorial(n);
+begin
+if n <= 1 then
+result := 1
+else
+begin
+call factorial(n - 1);
+result := result * n
+end
+end;
+
+procedure checkodd(num);
+begin
+if odd num then
+write(num, 1)
+else
+write(num, 0)
+end;
+
+begin
+read(x, y);
+
+if x < y then
+begin
+temp := x;
+x := y;
+y := temp
+end;
+
+temp := (x + y) * factor - 5 / (2 + 3) + maxlimit;
+write(temp);
+
+if x <> 0 then
+call checkodd(x);
+
+if y > 0 then
+begin
+call gcd(x, y);
+write(result)
+end;
+
+if x <= 10 then ？？
+！
+begin
+@#￥
+call factorial(x)
+write(result
+end
+end

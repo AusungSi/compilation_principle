@@ -1,0 +1,14 @@
+program testShadow;
+var x;
+procedure p();
+var x; 
+begin
+  x := 10;
+  write(x)
+end
+
+begin
+  x := 100;
+  call p();
+  write(x) 
+end

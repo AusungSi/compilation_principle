@@ -1,6 +1,0 @@
-program testInit;
-var a, b;
-begin
-  b := a + 1;
-  write(b)
-end

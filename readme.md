@@ -1,25 +1,27 @@
 📖 项目简介 (Introduction)
-本项目是 PL/0 语言 的完整编译系统实现。它采用了经典的编译原理架构，将源代码编译为基于栈的 P-Code（伪代码），并提供了一个配套的栈式虚拟机来执行生成的代码。
 
-该项目不仅仅实现了基础功能，还引入了现代编译器的高级特性，如恐慌模式错误恢复、Levenshtein 拼写建议以及编译期常量折叠，旨在展示对编译原理底层机制（如分程序结构、活动记录、静态链）的深度理解。
+本项目是 PL/0 语言的完整编译系统实现。它采用了经典的编译原理架构，将源代码编译为基于栈的 P-Code（伪代码），并提供了一个配套的栈式虚拟机来执行生成的代码。
+
+该项目不仅实现了基础功能，还引入了现代编译器的高级特性，如恐慌模式错误恢复、Levenshtein 拼写建议以及编译期常量折叠，旨在展示对编译原理底层机制（如分程序结构、活动记录、静态链）的深度理解。
 
 ✨ 核心特性 (Key Features)
 1. 前端技术 (Frontend)
-词法分析 (Lexer):
+词法分析 (Lexer)
 
 基于 DFA（确定性有限自动机）实现。
 
 支持双字符运算符预读（Lookahead），如 <=, >=。
 
-语法分析 (Parser):
+语法分析 (Parser)
 
-采用 递归下降分析法 (Recursive Descent Parsing)。
+采用递归下降分析法 (Recursive Descent Parsing)。
 
-实现了 恐慌模式 (Panic Mode) 错误恢复机制，单次编译可报告多个错误，不会因首个错误而中断。
+实现了恐慌模式 (Panic Mode) 错误恢复机制，单次编译可报告多个错误，不会因首个错误而中断。
 
-构建完整的 抽象语法树 (AST)，而非简单的直接翻译。
+构建完整的抽象语法树 (AST)，而非简单的直接翻译。
 
 2. 语义分析与优化 (Semantic Analysis & Optimization)
+
 作用域管理: 基于符号表栈（Symbol Table Stack）处理嵌套过程定义。
 
 智能拼写建议: 引入 Levenshtein 编辑距离算法。当使用未定义变量时，自动推荐最接近的变量名（如 countr -> counter）。
@@ -28,24 +30,22 @@
 
 常量折叠: 编译期计算常量表达式（如 2 + 3 -> 5）。
 
-安全检测: 编译期拦截除零错误、检测死循环（while 1=1）及不可达代码（if 0=1）。
+安全检测: 编译期拦截除零错误、检测死循环（如 while 1=1）及不可达代码（如 if 0=1）。
 
 3. 后端技术 (Backend)
-代码生成:
+代码生成 (Code Generation)
 
 基于 AST 后序遍历生成 P-Code。
 
-使用 地址回填 (Backpatching) 技术处理控制流跳转（If/While）。
+使用地址回填 (Backpatching) 技术处理控制流跳转（If/While）。
 
-虚拟机 (Interpreter):
+虚拟机 (Interpreter)
 
 模拟基于栈的计算机架构。
 
-完整实现 活动记录 (Activation Record)，包含 静态链 (Static Link)、动态链和返回地址，完美支持多层过程嵌套和非局部变量访问。
+完整实现活动记录 (Activation Record)，包含静态链 (Static Link)、动态链和返回地址，完美支持多层过程嵌套和非局部变量访问。
 
 📂 项目结构 (Directory Structure)
-Plaintext
-
 PL0-Compiler/
 ├── src/
 │   ├── token.py              # Token 定义与枚举
@@ -63,33 +63,32 @@ PL0-Compiler/
 │   └── nested_scope.pl0      # 嵌套作用域测试
 ├── main.py                   # 程序主入口
 └── README.md                 # 项目说明文档
+
 🚀 快速开始 (Quick Start)
 环境要求
+
 Python 3.10 或更高版本
 
 安装
-Bash
-
 git clone https://github.com/your-username/pl0-compiler.git
 cd pl0-compiler
-运行程序
-你可以通过命令行运行编译器，指定 PL/0 源文件路径：
 
-Bash
+运行程序
+
+你可以通过命令行运行编译器，指定 PL/0 源文件路径：
 
 # 运行示例：计算最大公约数
 python main.py tests/valid_gcd.pl0
+
+
 如果代码包含错误，编译器将输出带有行号的错误信息及修复建议：
 
-Bash
-
 python main.py tests/error_test.pl0
-(输出示例: [Semantic Error] Line 5: 未定义的标识符 'countr'. 您是不是想输入 'counter'?)
+# 输出示例: [Semantic Error] Line 5: 未定义的标识符 'countr'. 您是不是想输入 'counter'?
 
 📝 PL/0 语法示例
-以下是一段支持嵌套过程和递归的 PL/0 代码示例（求最大公约数）：
 
-Delphi
+以下是一段支持嵌套过程和递归的 PL/0 代码示例（求最大公约数）：
 
 program gcdExample;
 var x, y, z;
@@ -113,10 +112,9 @@ begin
     call gcd;
     write(z)  (* Output should be 12 *)
 end.
+
 🛠️ 技术原理 (Technical Implementation)
 1. 编译流程
-代码段
-
 graph LR
     A[Source Code] --> B(Lexer);
     B --> C{Parser};
@@ -125,7 +123,9 @@ graph LR
     D -->|Verified AST| E[Code Generator];
     E -->|P-Code| F[Interpreter];
     F --> G[Output];
+
 2. 运行时栈帧 (Runtime Stack Frame)
+
 虚拟机通过维护 STACK 数组模拟内存，每个过程调用分配一个栈帧：
 
 Offset 0 (SL): 静态链，指向定义层的基址（解决嵌套变量访问）。
